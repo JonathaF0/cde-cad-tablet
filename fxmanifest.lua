@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'CDE Inc.'
 description 'In-Game CAD Tablet Interface'
-version '1.0.0'
+version '3.2.3'
 
 client_scripts {
     'client/*.lua'
