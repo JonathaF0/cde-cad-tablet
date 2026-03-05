@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAD Tablet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: transparent;
+            overflow: hidden;
+        }
+
+        #tablet-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #tablet-container.show {
+            display: flex;
+        }
+
+        .tablet-frame {
+            width: 85vw;
+            height: 90vh;
+            max-width: 1400px;
+            max-height: 900px;
+            background: #1e2329;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+            border: 2px solid #404040;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .tablet-header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            border-bottom: 1px solid #34495e;
+        }
+
+        .tablet-title {
+            display: flex;
+            align-items: center;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .tablet-title .icon {
+            margin-right: 12px;
+            font-size: 24px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .control-btn.close:hover {
+            background: rgba(231, 76, 60, 0.8);
+        }
+
+        .tablet-content {
+            flex: 1;
+            position: relative;
+            background: #f8f9fa;
+        }
+
+        #cad-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            z-index: 1;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid #e3e6ea;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 25px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #495057;
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .loading-url {
+            color: #6c757d;
+            font-size: 14px;
+            word-break: break-all;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .tablet-footer {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            padding: 12px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #ecf0f1;
+            font-size: 14px;
+            border-top: 1px solid #34495e;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #27ae60;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+        }
+
+        .tablet-time {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .error-display {
+            text-align: center;
+            color: #e74c3c;
+            padding: 20px;
+        }
+
+        .error-title {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .error-message {
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .error-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 0 5px;
+            transition: background 0.3s ease;
+        }
+
+        .error-btn:hover {
+            background: #2980b9;
+        }
+
+        .error-btn.close {
+            background: #e74c3c;
+        }
+
+        .error-btn.close:hover {
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            .tablet-frame {
+                width: 95vw;
+                height: 95vh;
+                border-radius: 15px;
+            }
+            
+            .tablet-header {
+                padding: 12px 20px;
+            }
+            
+            .tablet-title {
+                font-size: 18px;
+            }
+            
+            .control-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="tablet-container">
+        <div class="tablet-frame">
+            <div class="tablet-header">
+                <div class="tablet-title">
+                    <span class="icon">📱</span>
+                    CAD System
+                </div>
+                <div class="header-controls">
+                    <button class="control-btn" onclick="refreshCAD()" title="Refresh">
+                        🔄
+                    </button>
+                    <button class="control-btn close" onclick="closeTablet()" title="Close">
+                        ✕
+                    </button>
+                </div>
+            </div>
+
+            <div class="tablet-content">
+                <iframe id="cad-frame" 
+                        src=""
+                        allow="popups; popups-to-escape-sandbox; modals"
+                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads">
+                </iframe>
+                
+                <div class="loading-overlay" id="loading-overlay">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">Loading CAD System</div>
+                    <div class="loading-url" id="loading-url"></div>
+                </div>
+            </div>
+
+            <div class="tablet-footer">
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    Connected
+                </div>
+                <div class="tablet-time" id="tablet-time">00:00</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isTabletOpen = false;
+        let currentUrl = '';
+        let loadTimeout = null;
+        let hasLoadedOnce = false;  // Track if we've loaded the iframe
+        const resourceName = window.GetParentResourceName ? window.GetParentResourceName() : 'cad_tablet';
+        const isFiveM = typeof window.GetParentResourceName !== 'undefined';
+
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { 
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            document.getElementById('tablet-time').textContent = timeString;
+        }
+
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        function showTablet() {
+            console.log('[CAD-TABLET] Showing tablet interface');
+            document.getElementById('tablet-container').classList.add('show');
+            isTabletOpen = true;
+        }
+
+        function hideTablet() {
+            console.log('[CAD-TABLET] Hiding tablet interface');
+            document.getElementById('tablet-container').classList.remove('show');
+            isTabletOpen = false;
+            
+            // DON'T clear iframe src - keep it loaded to preserve state
+            // This keeps the user logged in and on their current page
+            
+            if (loadTimeout) {
+                clearTimeout(loadTimeout);
+                loadTimeout = null;
+            }
+        }
+
+        function loadCAD(url) {
+            console.log('[CAD-TABLET] Loading CAD:', url);
+            currentUrl = url;
+            
+            const frame = document.getElementById('cad-frame');
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingUrl = document.getElementById('loading-url');
+            
+            loadingOverlay.classList.remove('hidden');
+            loadingUrl.textContent = url;
+            
+            if (loadTimeout) clearTimeout(loadTimeout);
+            
+            loadTimeout = setTimeout(() => {
+                showError('Connection timeout', 'Unable to connect to the CAD system.');
+            }, 15000);
+            
+            frame.onload = function() {
+                console.log('[CAD-TABLET] CAD loaded successfully');
+                clearTimeout(loadTimeout);
+                loadTimeout = null;
+                
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                }, 1000);
+            };
+            
+            frame.onerror = function() {
+                console.error('[CAD-TABLET] Failed to load CAD');
+                clearTimeout(loadTimeout);
+                loadTimeout = null;
+                showError('Load Error', 'Failed to load the CAD system.');
+            };
+            
+            frame.src = url;
+        }
+
+        function showError(title, message) {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            loadingOverlay.innerHTML = `
+                <div class="error-display">
+                    <div class="error-title">${title}</div>
+                    <div class="error-message">${message}</div>
+                    <button class="error-btn" onclick="retryLoad()">Try Again</button>
+                    <button class="error-btn close" onclick="closeTablet()">Close</button>
+                </div>
+            `;
+        }
+
+        function retryLoad() {
+            if (currentUrl) {
+                console.log('[CAD-TABLET] Retrying load');
+                loadCAD(currentUrl + (currentUrl.includes('?') ? '&' : '?') + 'retry=' + Date.now());
+            }
+        }
+
+        function refreshCAD() {
+            if (currentUrl) {
+                console.log('[CAD-TABLET] Refreshing CAD');
+                hasLoadedOnce = false; // Reset so it reloads
+                loadCAD(currentUrl + (currentUrl.includes('?') ? '&' : '?') + 'refresh=' + Date.now());
+            }
+        }
+
+        function closeTablet() {
+            console.log('[CAD-TABLET] Close button clicked');
+            
+            fetch(`https://${resourceName}/closeTablet`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            }).catch(err => {
+                console.log('[CAD-TABLET] Close callback failed:', err);
+            });
+            
+            hideTablet();
+        }
+
+        // Listen for messages from Lua
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            
+            if (data.type === 'openTablet') {
+                console.log('[CAD-TABLET] Opening tablet');
+                showTablet();
+                
+                // Only load URL on first open or if iframe is empty
+                const frame = document.getElementById('cad-frame');
+                if (!hasLoadedOnce || !frame.src || frame.src === '' || frame.src === 'about:blank') {
+                    if (data.url) {
+                        console.log('[CAD-TABLET] First load - loading URL:', data.url);
+                        loadCAD(data.url);
+                        hasLoadedOnce = true;
+                    }
+                } else {
+                    console.log('[CAD-TABLET] ✓ Iframe already loaded, preserving session');
+                }
+            } else if (data.type === 'closeTablet' || data.type === 'forceClose') {
+                console.log('[CAD-TABLET] Closing tablet');
+                hideTablet();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && isTabletOpen) {
+                console.log('[CAD-TABLET] ESC key pressed');
+                closeTablet();
+            }
+        });
+
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+
+        console.log('[CAD-TABLET] Interface loaded - session will persist between opens');
+    </script>
+</body>
+</html>
