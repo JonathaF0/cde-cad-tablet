@@ -1,17 +1,22 @@
 fx_version 'cerulean'
 game 'gta5'
 
-author 'CDE Inc.'
-description 'In-Game CAD Tablet Interface'
-version '3.2.3'
+author 'CDE Inc'
+description 'CAD Tablet & Call Details Popup for CDECAD'
+version '1.0.0'
+
+shared_scripts {
+    'config.lua'
+}
 
 client_scripts {
     'client/*.lua'
 }
--- Server scripts
+
 server_scripts {
     'server/*.lua'
 }
+
 ui_page 'html/index.html'
 
 files {
