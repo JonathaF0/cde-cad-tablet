@@ -12,11 +12,6 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     transform: translate(-50%, -50%);
     z-index: 9999;
     pointer-events: auto;
-    transition: opacity 0.25s ease;
-}
-
-.tablet.dimmed {
-    opacity: 0.15;
 }
 
 .tablet-frame {
@@ -82,11 +77,9 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     top: 16px;
     right: 16px;
     width: 340px;
-    background: rgba(15, 21, 41, 0.95);
-    border: 1px solid #1e3a5f;
+    background: rgba(30, 58, 95, 0.92);
     border-radius: 10px;
     z-index: 10000;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(8px);
     overflow: hidden;
     pointer-events: auto;
@@ -97,8 +90,6 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: rgba(59, 130, 246, 0.12);
-    border-bottom: 1px solid #1e3a5f;
 }
 
 .popup-title {
@@ -198,7 +189,6 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
 /* ─── Navigation Buttons ────────────────────────────────────────────────── */
 .popup-nav {
     display: flex;
-    border-top: 1px solid #1e3a5f;
 }
 
 .nav-btn {
@@ -213,5 +203,5 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     cursor: pointer;
     transition: all 0.15s;
 }
-.nav-btn:first-child { border-right: 1px solid #1e3a5f; }
+.nav-btn:first-child { border-right: 1px solid rgba(59, 130, 246, 0.2); }
 .nav-btn:hover { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
