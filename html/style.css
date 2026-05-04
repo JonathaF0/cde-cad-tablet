@@ -12,7 +12,9 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     transform: translate(-50%, -50%);
     z-index: 9999;
     pointer-events: auto;
+    transition: opacity 0.2s ease;
 }
+.tablet.dimmed { opacity: 0.15; }
 
 .tablet-frame {
     width: 70vw;
@@ -57,6 +59,11 @@ body { background: transparent; font-family: 'Segoe UI', Tahoma, Geneva, Verdana
     align-items: center;
     justify-content: center;
     transition: all 0.15s;
+    /* Force a stacking context above the iframe so clicks can't be stolen
+       by focused iframe content when the user reaches for the X. */
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
 }
 .tablet-close:hover {
     background: #ef4444;
