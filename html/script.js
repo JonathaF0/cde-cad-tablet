@@ -18,6 +18,21 @@
     var tabletURL = '';
     var dimmerEnabled = false;
 
+    // Use the parent resource name so this works if the resource is renamed.
+    // window.GetParentResourceName is injected by FiveM's CefSharp NUI runtime.
+    var RESOURCE = (typeof GetParentResourceName === 'function')
+        ? GetParentResourceName()
+        : 'cad-tablet';
+
+    function nuiPost(action) {
+        // Match the prevCall/nextCall fetch shape. Some FXServer versions are
+        // picky about an explicit Content-Type with an empty body, so omit it.
+        return fetch('https://' + RESOURCE + '/' + action, {
+            method: 'POST',
+            body: '{}'
+        }).catch(function () {});
+    }
+
     function openTablet(url, dimmer) {
         // Only load the URL on first open — preserve session on subsequent opens
         if (tabletURL !== url) {
@@ -30,11 +45,7 @@
     }
 
     function closeTablet() {
-        fetch('https://' + GetParentResourceName() + '/closeTablet', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        }).catch(function () {});
+        nuiPost('closeTablet');
         tablet.classList.add('hidden');
     }
 
@@ -109,13 +120,8 @@
     }
 
     // Nav buttons
-    var resName = GetParentResourceName();
-    $('#prevCall').addEventListener('click', function () {
-        fetch('https://' + resName + '/prevCall', { method: 'POST', body: '{}' });
-    });
-    $('#nextCall').addEventListener('click', function () {
-        fetch('https://' + resName + '/nextCall', { method: 'POST', body: '{}' });
-    });
+    $('#prevCall').addEventListener('click', function () { nuiPost('prevCall'); });
+    $('#nextCall').addEventListener('click', function () { nuiPost('nextCall'); });
 
     // ─── NUI Message Handler ─────────────────────────────────────────────────
 
@@ -130,6 +136,12 @@
 
             case 'closeTablet':
                 tablet.classList.add('hidden');
+                break;
+
+            case 'reloadTablet':
+                if (tabletURL) {
+                    tabletFrame.src = tabletURL;
+                }
                 break;
 
             case 'showPopup':
