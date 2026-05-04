@@ -55,6 +55,38 @@ Config.Framework = {
 Config.RequireOnDuty = false
 
 -- ========================================
+-- LOCATION TRACKING (optional — replaces cde_lm livemap)
+-- ========================================
+-- When enabled, this resource pushes the player's GPS location to the CAD
+-- livemap on a timer, mirroring what cde_lm does. Useful for servers that
+-- don't want to run a separate livemap script.
+--
+-- IMPORTANT: do NOT enable this if you also run cde_lm — you'll get duplicate
+-- updates. The resource will print a warning if it detects cde_lm running.
+Config.LocationTracking = {
+    Enabled         = false,         -- Master switch (off by default)
+
+    -- Where to read the player's duty status from:
+    --   'auto'     — try CDE_Duty → ESX → QBCore → CAD (in that order)
+    --   'cde_duty' — exports.CDE_Duty:GetDutyStatus()
+    --   'esx'      — ESX PlayerData.job
+    --   'qbcore'   — QBCore PlayerData.job
+    --   'cad'      — poll CAD's /api/fivem/unit-active (no duty script needed;
+    --                user goes "on duty" by clicking Begin Shift in CAD)
+    DutySource      = 'auto',
+
+    Interval        = 10000,         -- ms between location pushes
+    MinDistance     = 50.0,          -- GTA units; skip update if moved less
+    LEOOnly         = false,         -- only track LEO (police/sheriff) depts
+
+    -- For DutySource = 'cad': how often to ask the CAD if the user is active.
+    -- Cheap call (lean DB read), but no need to hammer it.
+    CADActiveCheckInterval = 30000,
+
+    SendOfflineOnDisconnect = true,  -- Push status='Offline' on resource stop
+}
+
+-- ========================================
 -- OPTIMIZATION SETTINGS
 -- ========================================
 Config.EnableDebug = false  -- Enable verbose debug logging
