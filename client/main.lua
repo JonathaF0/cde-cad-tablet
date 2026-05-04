@@ -47,21 +47,21 @@ local function cleanupProp()
 end
 
 local function closeTablet()
-    if not tabletOpen then return end
-    dbg("closeTablet() called")
-
-    tabletOpen = false
-    lastOpenTime = GetGameTimer()
+    -- Always release NUI focus, even if the script's flag thinks the tablet
+    -- is closed. The X-button NUI callback occasionally races with the JS-side
+    -- hide; without this the cursor / keyboard stayed locked until ESC.
+    dbg("closeTablet() called (was open=" .. tostring(tabletOpen) .. ")")
 
     cleanupProp()
-
-    Citizen.Wait(100)
 
     SetNuiFocusKeepInput(false)
     SetNuiFocus(false, false)
     SendNUIMessage({ type = "closeTablet" })
 
-    dbg("Tablet closed — NUI focus released")
+    tabletOpen = false
+    lastOpenTime = GetGameTimer()
+
+    dbg("Tablet closed")
 end
 
 local function openTablet()
@@ -97,6 +97,7 @@ local function openTablet()
     Citizen.Wait(200)
     SendNUIMessage({ type = "openTablet", url = Config.TabletURL, dimmer = Config.TabletDimmer })
     SetNuiFocus(true, true)
+    SetNuiFocusKeepInput(true)
 
     dbg("Tablet opened")
 end
@@ -211,6 +212,12 @@ end, false)
 
 RegisterKeyMapping('tablet', Config.TabletDescription, 'keyboard', Config.TabletKey)
 
+-- Hard-reload the CAD iframe in-place
+RegisterCommand('cadrefresh', function()
+    dbg("Command 'cadrefresh' fired")
+    SendNUIMessage({ type = "reloadTablet" })
+end, false)
+
 -- Emergency reset command
 RegisterCommand('resetcad', function()
     dbg("Emergency reset triggered")
@@ -231,31 +238,26 @@ if Config.EnableCallPopup then
     RegisterKeyMapping('cad_popup', Config.CallPopupDescription, 'keyboard', Config.CallPopupKey)
 end
 
--- ─── ESC close & death check thread ─────────────────────────────────────────
--- SetNuiFocus(true, true) blocks all game input. Control 200 (ESC) is still
--- detectable via IsControlJustReleased as FiveM always processes it.
--- NUI callbacks (× button) use GetParentResourceName() for correct routing.
+-- ─── Main control thread ─────────────────────────────────────────────────────
+-- SetNuiFocusKeepInput(true) lets the game still process controls while NUI
+-- has focus. We disable all controls each frame so the player can't move/shoot,
+-- then check for ESC (control 200) which now fires because input isn't blocked.
 Citizen.CreateThread(function()
-    local deathCheck = 0
     while true do
+        Citizen.Wait(0)
         if tabletOpen then
-            Citizen.Wait(0)
-            if IsControlJustReleased(0, 200) then
-                dbg("ESC pressed, closing tablet")
+            DisableAllControlActions(0)
+
+            if IsDisabledControlJustReleased(0, 200) then
+                dbg("ESC detected (control 200)")
                 closeTablet()
             end
-            -- Death check every ~60 frames
-            deathCheck = deathCheck + 1
-            if deathCheck >= 60 then
-                deathCheck = 0
-                if IsEntityDead(PlayerPedId()) then
-                    dbg("Player died, closing tablet")
-                    closeTablet()
-                end
+
+            -- Auto-close if player dies
+            if IsEntityDead(PlayerPedId()) then
+                dbg("Player died, closing tablet")
+                closeTablet()
             end
-        else
-            deathCheck = 0
-            Citizen.Wait(500)
         end
     end
 end)
@@ -266,12 +268,212 @@ AddEventHandler('onResourceStop', function(res)
     cleanupProp()
     SetNuiFocusKeepInput(false)
     SetNuiFocus(false, false)
+    if Config.LocationTracking and Config.LocationTracking.Enabled
+       and Config.LocationTracking.SendOfflineOnDisconnect then
+        TriggerServerEvent('cad-tablet:sendOffline')
+    end
 end)
+
+-- ─── Optional: Location Tracking (replaces cde_lm livemap) ──────────────────
+-- Only runs when Config.LocationTracking.Enabled = true. Pushes the player's
+-- raw GTA coords + status to the CAD's /api/dispatch/location-update endpoint
+-- on a timer, gated by their on-duty state. Duty source is configurable.
+
+local LEO_JOBS = {
+    leo = true, police = true, sheriff = true, trooper = true,
+    statepolice = true, lspd = true, bcso = true, sasp = true, highway = true,
+}
+
+local cadActiveCache = {
+    active     = false,
+    status     = 'Offline',
+    department = nil,
+    callSign   = nil,
+    lastUpdate = 0,
+}
+
+local trackingState = {
+    lastPos      = nil,
+    lastSent     = 0,
+    isTracking   = false,
+}
+
+local function getPostal()
+    if GetResourceState('nearest-postal') ~= 'started' then return 'Unknown' end
+    local attempts = {
+        function() return exports.npostal:npostal() end,
+        function() return exports['nearest-postal']:npostal() end,
+        function() return exports['nearest-postal']:getPostal() end,
+        function() return exports.npostal:getPostal() end,
+    }
+    for _, fn in ipairs(attempts) do
+        local ok, result = pcall(fn)
+        if ok and result then return tostring(result) end
+    end
+    return 'Unknown'
+end
+
+local function getDutyFromCDE()
+    if GetResourceState('CDE_Duty') ~= 'started' then return nil end
+    local ok, result = pcall(function() return exports.CDE_Duty:GetDutyStatus() end)
+    if not ok or not result then return nil end
+    if result.onDuty then
+        return {
+            onDuty     = true,
+            department = result.department or result.job,
+            job        = result.job,
+            status     = 'In Service',
+        }
+    end
+    return { onDuty = false }
+end
+
+local function getDutyFromESX()
+    if GetResourceState('es_extended') ~= 'started' then return nil end
+    local ok, ESX = pcall(function() return exports['es_extended']:getSharedObject() end)
+    if not ok or not ESX then return nil end
+    local pd = ESX.GetPlayerData and ESX.GetPlayerData()
+    if pd and pd.job and pd.job.name then
+        return {
+            onDuty     = true,
+            department = pd.job.name,
+            job        = pd.job.name,
+            status     = 'In Service',
+        }
+    end
+    return { onDuty = false }
+end
+
+local function getDutyFromQBCore()
+    if GetResourceState('qb-core') ~= 'started' then return nil end
+    local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
+    if not ok or not QBCore then return nil end
+    local pd = QBCore.Functions and QBCore.Functions.GetPlayerData()
+    if pd and pd.job and pd.job.name and pd.job.onduty then
+        return {
+            onDuty     = true,
+            department = pd.job.name,
+            job        = pd.job.name,
+            status     = 'In Service',
+        }
+    end
+    return { onDuty = false }
+end
+
+local function getDutyFromCAD()
+    return {
+        onDuty     = cadActiveCache.active == true,
+        department = cadActiveCache.department,
+        job        = nil,
+        status     = cadActiveCache.status or 'In Service',
+    }
+end
+
+local function resolveDutyState()
+    local src = (Config.LocationTracking and Config.LocationTracking.DutySource) or 'auto'
+    if src == 'cde_duty' then return getDutyFromCDE() or { onDuty = false } end
+    if src == 'esx'      then return getDutyFromESX() or { onDuty = false } end
+    if src == 'qbcore'   then return getDutyFromQBCore() or { onDuty = false } end
+    if src == 'cad'      then return getDutyFromCAD() end
+    -- auto: first source that returns a usable result
+    return getDutyFromCDE() or getDutyFromESX() or getDutyFromQBCore() or getDutyFromCAD()
+end
+
+local function getDistance(a, b)
+    if not a or not b then return math.huge end
+    local dx, dy = a.x - b.x, a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+local function shouldTrack(duty)
+    if not duty or not duty.onDuty then return false end
+    if Config.LocationTracking.LEOOnly and duty.job and not LEO_JOBS[string.lower(duty.job)] then
+        return false
+    end
+    return true
+end
+
+local function pushLocation(coords, duty)
+    TriggerServerEvent('cad-tablet:pushLocation', {
+        x          = coords.x,
+        y          = coords.y,
+        z          = coords.z,
+        heading    = GetEntityHeading(PlayerPedId()),
+        status     = duty.status or 'In Service',
+        department = duty.department,
+        postal     = getPostal(),
+    })
+    trackingState.lastPos  = coords
+    trackingState.lastSent = GetGameTimer()
+end
+
+-- Server pushes us the latest CAD active-state cache
+RegisterNetEvent('cad-tablet:cadActiveResult')
+AddEventHandler('cad-tablet:cadActiveResult', function(data)
+    cadActiveCache.active     = data and data.active == true
+    cadActiveCache.status     = data and data.status or 'Offline'
+    cadActiveCache.department = data and data.department or nil
+    cadActiveCache.callSign   = data and data.callSign or nil
+    cadActiveCache.lastUpdate = GetGameTimer()
+    dbg("CAD active=" .. tostring(cadActiveCache.active)
+        .. ", dept=" .. tostring(cadActiveCache.department))
+end)
+
+-- Push thread — only created when tracking is enabled
+if Config.LocationTracking and Config.LocationTracking.Enabled then
+    Citizen.CreateThread(function()
+        -- Wait for resource init / framework load
+        Citizen.Wait(5000)
+
+        if GetResourceState('cde_lm') == 'started' then
+            print("^1[CAD-TABLET] WARNING: cde_lm livemap is also running. " ..
+                  "You'll get duplicate location updates. Disable one.^0")
+        end
+
+        while true do
+            Citizen.Wait(Config.LocationTracking.Interval or 10000)
+
+            local duty = resolveDutyState()
+            if shouldTrack(duty) then
+                local ped = PlayerPedId()
+                if DoesEntityExist(ped) and not IsEntityDead(ped) then
+                    local coords = GetEntityCoords(ped)
+                    local moved  = getDistance(coords, trackingState.lastPos)
+                    if moved >= (Config.LocationTracking.MinDistance or 50.0) then
+                        pushLocation(coords, duty)
+                        if not trackingState.isTracking then
+                            trackingState.isTracking = true
+                            dbg("Tracking started — dept=" .. tostring(duty.department))
+                        end
+                    end
+                end
+            else
+                if trackingState.isTracking then
+                    trackingState.isTracking = false
+                    dbg("Tracking stopped — went off duty")
+                    if Config.LocationTracking.SendOfflineOnDisconnect then
+                        TriggerServerEvent('cad-tablet:sendOffline')
+                    end
+                end
+            end
+        end
+    end)
+
+    -- CAD active-state poller (only when DutySource needs it)
+    Citizen.CreateThread(function()
+        local src = Config.LocationTracking.DutySource or 'auto'
+        if src ~= 'cad' and src ~= 'auto' then return end
+
+        Citizen.Wait(3000)
+        while true do
+            TriggerServerEvent('cad-tablet:checkCADActive')
+            Citizen.Wait(Config.LocationTracking.CADActiveCheckInterval or 30000)
+        end
+    end)
+end
 
 -- ─── Init ────────────────────────────────────────────────────────────────────
 Citizen.CreateThread(function()
-    -- Clear any stale NUI focus state from previous resource starts
-    SetNuiFocusKeepInput(false)
     SetNuiFocus(false, false)
     Citizen.Wait(500)
     dbg("Initialized — Tablet key: " .. Config.TabletKey ..
