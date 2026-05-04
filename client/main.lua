@@ -97,7 +97,11 @@ local function openTablet()
     Citizen.Wait(200)
     SendNUIMessage({ type = "openTablet", url = Config.TabletURL, dimmer = Config.TabletDimmer })
     SetNuiFocus(true, true)
-    SetNuiFocusKeepInput(true)
+    -- Exclusive NUI focus — game sees no keystrokes, so other scripts'
+    -- RegisterKeyMapping handlers don't fire while the player types in
+    -- the tablet. ESC is captured by the JS-side keydown listener in
+    -- html/script.js, so we don't need KeepInput for that anymore.
+    SetNuiFocusKeepInput(false)
 
     dbg("Tablet opened")
 end
@@ -239,21 +243,16 @@ if Config.EnableCallPopup then
 end
 
 -- ─── Main control thread ─────────────────────────────────────────────────────
--- SetNuiFocusKeepInput(true) lets the game still process controls while NUI
--- has focus. We disable all controls each frame so the player can't move/shoot,
--- then check for ESC (control 200) which now fires because input isn't blocked.
+-- NUI has exclusive keyboard focus while open (KeepInput is false), so the
+-- game receives no controls — DisableAllControlActions is just defense in
+-- depth. ESC is handled in JS (html/script.js). The death check stays so
+-- the tablet auto-closes if the player dies mid-typing.
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
         if tabletOpen then
             DisableAllControlActions(0)
 
-            if IsDisabledControlJustReleased(0, 200) then
-                dbg("ESC detected (control 200)")
-                closeTablet()
-            end
-
-            -- Auto-close if player dies
             if IsEntityDead(PlayerPedId()) then
                 dbg("Player died, closing tablet")
                 closeTablet()
